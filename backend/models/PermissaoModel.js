@@ -12,6 +12,19 @@ const PermissaoModel = sequelize.define('permissoe', {
       allowNull: false,
       unique: true,
     },
+    createdAt: {
+      type: DataTypes.DATE,
+      allowNull: false,
+      defaultValue: sequelize.literal('CURRENT_TIMESTAMP'),
+  },
+  updatedAt: {
+      type: DataTypes.DATE,
+      allowNull: false,
+      defaultValue: sequelize.literal('CURRENT_TIMESTAMP'),
+  },
+  }, {
+    timestamps: true, 
+  
   });
 
 module.exports = {PermissaoModel};

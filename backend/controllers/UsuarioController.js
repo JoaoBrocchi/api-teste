@@ -1,36 +1,44 @@
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcrypt');
+require("dotenv").config()
+const {UsuarioModel} = require('../models/UsuarioModel.js');
+const {PermissaoModel}= require("../models/PermissaoModel");
+const { where } = require('sequelize');
+const fs = require('fs');
 
-const { UsuarioModel, PermissaoModel, UsuarioPermissao } = require('../models/RelationalModel');
+const privateKey = fs.readFileSync('./private.pem', 'utf-8');
+
 class UsuarioController {
   static async createUser(req, res) {
     try {
       const { nome, email, senha, permissoes } = req.body;
-
+    
       if (!nome || !email || !senha) {
         console.error("Campos obrigatórios não preenchidos");
         return res.status(400).json({ erro: 'Todos os campos devem ser preenchidos' });
       }
-
-      // Hash da senha antes de salvar no banco de dados
+    
+      
       const hashedSenha = await bcrypt.hash(senha, 10);
+      
+      let Permissao_id
+      const permissao = await PermissaoModel.findOne({ where: { nome: permissoes } });
 
-      // Criação do usuário
+      if (permissao) {
+        Permissao_id = permissao.id;
+      } else {
+        console.error('Permissao não encontrada');
+        return res.status(404).json({ erro: 'Permissao não encontrada' });
+      }
       const novoUsuario = await UsuarioModel.create({
         nome,
         email,
         senha: hashedSenha,
+        Permissao_id
       });
-
-      // Associação das permissões ao usuário
-      if (permissoes && permissoes.length > 0) {
-        const permissoesAssociadas = await PermissaoModel.findAll({
-          where: { nome: permissoes },
-        });
-
-        await novoUsuario.setPermissoes(permissoesAssociadas);
-      }
-
+    
+      
+  
       res.status(201).json({ mensagem: 'Usuário cadastrado com sucesso' });
     } catch (error) {
       console.error("Erro ao cadastrar usuário:", error);
@@ -46,24 +54,27 @@ class UsuarioController {
     try {
       const { email, senha } = req.body;
 
-      // Busca o usuário pelo email incluindo as permissões
+      
       const usuario = await UsuarioModel.findOne({
-        where: { email },
-        include: [{ model: Permissao, attributes: ['nome'], through: { attributes: [] } }],
+        where: { email : email}
+        
       });
 
       if (!usuario || !(await bcrypt.compare(senha, usuario.senha))) {
         return res.status(401).json({ erro: 'Credenciais inválidas' });
       }
+      
+      const permissao = await  PermissaoModel.findOne({where :{id : usuario.Permissao_id }})
+      console.log(permissao)
+      const payload = {
+        usuarioId: usuario.id,
+        nome : usuario.nome,
+        permissoes: permissao.nome,
+      };
+      
+      const token = jwt.sign(payload, privateKey, { algorithm: 'RS256', expiresIn: '1h' });
 
-      // Gera um token JWT com as permissões do usuário
-      const token = jwt.sign(
-        { id: usuario.id, email: usuario.email, permissoes: usuario.permissoes },
-        process.env.JWT_SECRET || 'chave-secreta',
-        { algorithm: 'RS256' }
-      );
-
-      res.json({ token });
+      res.status(201).json({ token });
     } catch (error) {
       console.error(error);
       res.status(500).json({ erro: 'Erro ao realizar login' });
@@ -95,7 +106,7 @@ class UsuarioController {
       const usuario = await UsuarioModel.findByPk(req.params.id);
 
       if (usuario) {
-        // Implemente aqui a lógica para deletar o usuário
+        
         await usuario.destroy();
         res.json({ mensagem: 'Usuário deletado com sucesso' });
       } else {
@@ -114,7 +125,7 @@ class UsuarioController {
       if (usuario) {
         const { nome, email, senha, permissoes } = req.body;
 
-        // Atualiza os dados do usuário
+        
         usuario.nome = nome || usuario.nome;
         usuario.email = email || usuario.email;
 
@@ -125,9 +136,9 @@ class UsuarioController {
 
         await usuario.save();
 
-        // Atualiza as permissões associadas ao usuário, se necessário
+        
         if (permissoes && permissoes.length > 0) {
-          const permissoesAssociadas = await Permissao.findAll({
+          const permissoesAssociadas = await PermissaoModel.findAll({
             where: { nome: permissoes },
           });
           await usuario.setPermissoes(permissoesAssociadas);
